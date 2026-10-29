@@ -25,6 +25,7 @@ use Magento\Quote\Api\Data\CartInterface;
 use Magento\Sales\Model\Order;
 use Magento\Store\Model\ScopeInterface;
 use Zero\Checkout\Controller\Checkout\Placeorder;
+use Zero\Checkout\Model\RedirectPayment\ReturnUrl;
 
 /**
  * Klarna's hosted payment page (zero_klarna): pay now, later or in
@@ -108,6 +109,7 @@ class Payment extends AbstractMethod
         private readonly Api $api,
         private readonly OrderLines $orderLines,
         private readonly UrlInterface $urlBuilder,
+        private readonly ReturnUrl $returnUrl,
         ?AbstractResource $resource = null,
         ?AbstractDb $resourceCollection = null,
         array $data = []
@@ -185,8 +187,11 @@ class Payment extends AbstractMethod
             throw new LocalizedException(__('Klarna didn\'t create the payment. Please try again or choose another payment method.'));
         }
         $urlParams = ['_secure' => true, '_query' => ['order' => $reference]];
-        $returnUrl = $this->urlBuilder->getUrl('zero_klarna/payment/return', $urlParams);
-        $cancelUrl = $this->urlBuilder->getUrl('zero_klarna/payment/cancel', $urlParams);
+        // With a headless storefront for the store view, the customer goes back there (Zero_Checkout's ReturnUrl).
+        $returnUrl = $this->returnUrl->headless($order, self::CODE)
+            ?? $this->urlBuilder->getUrl('zero_klarna/payment/return', $urlParams);
+        $cancelUrl = $this->returnUrl->headless($order, self::CODE, ['outcome' => 'cancel'])
+            ?? $this->urlBuilder->getUrl('zero_klarna/payment/cancel', $urlParams);
         $merchantUrls = [
             'success' => $returnUrl,
             'failure' => $returnUrl,
