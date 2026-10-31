@@ -10,6 +10,7 @@ namespace Zero\Klarna\Test\Unit\Model;
 
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Item;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Zero\Klarna\Model\OrderLines;
 
@@ -67,5 +68,28 @@ class OrderLinesTest extends TestCase
         ]);
 
         return $order;
+    }
+
+    /**
+     * The deprecated wrapper still gives what it gave before MinorUnits.
+     */
+    #[DataProvider('pinned')]
+    public function testMinorUnchanged(float $amount, string $currency, int $minor): void
+    {
+        $this->assertSame($minor, OrderLines::minor($amount, $currency));
+    }
+
+    /** @return array<string, array{float, string, int}> */
+    public static function pinned(): array
+    {
+        return [
+            'EUR' => [10.99, 'EUR', 1099],
+            'SEK' => [99.5, 'SEK', 9950],
+            'USD' => [19.99, 'USD', 1999],
+            'GBP' => [0.01, 'GBP', 1],
+            'JPY' => [1000.0, 'JPY', 1000],
+            'KRW' => [12000.0, 'KRW', 12000],
+            'ISK' => [5000.0, 'ISK', 5000],
+        ];
     }
 }

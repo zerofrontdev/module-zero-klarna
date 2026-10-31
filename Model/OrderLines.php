@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace Zero\Klarna\Model;
 
 use Magento\Sales\Model\Order;
+use Zero\Checkout\Model\Money\MinorUnits;
 
 /**
  * The order as Klarna wants it: its lines in minor units of the order's
@@ -19,9 +20,6 @@ use Magento\Sales\Model\Order;
  */
 class OrderLines
 {
-    /** Currencies without minor units. */
-    private const ZERO_DECIMAL = ['JPY', 'KRW', 'ISK'];
-
     /**
      * @return array{order_amount: int, order_tax_amount: int, order_lines: array<int, array>}
      */
@@ -77,8 +75,14 @@ class OrderLines
         return ['order_amount' => $amount, 'order_tax_amount' => 0, 'order_lines' => $lines];
     }
 
+    /**
+     * An amount in minor units as Klarna takes it (JPY, KRW and ISK whole).
+     *
+     * @deprecated use MinorUnits::toMinor($amount, $currency, MinorUnits::KLARNA)
+     * @see MinorUnits::toMinor()
+     */
     public static function minor(float $amount, string $currency): int
     {
-        return (int) round(in_array($currency, self::ZERO_DECIMAL, true) ? $amount : $amount * 100);
+        return MinorUnits::toMinor($amount, $currency, MinorUnits::KLARNA);
     }
 }

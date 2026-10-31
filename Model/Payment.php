@@ -25,6 +25,7 @@ use Magento\Quote\Api\Data\CartInterface;
 use Magento\Sales\Model\Order;
 use Magento\Store\Model\ScopeInterface;
 use Zero\Checkout\Controller\Checkout\Placeorder;
+use Zero\Checkout\Model\Money\MinorUnits;
 use Zero\Checkout\Model\RedirectPayment\ReturnUrl;
 
 /**
@@ -313,7 +314,11 @@ class Payment extends AbstractMethod
      */
     private function minor(Order $order, float $baseAmount): int
     {
-        return OrderLines::minor($baseAmount * (float) ($order->getBaseToOrderRate() ?: 1), (string) $order->getOrderCurrencyCode());
+        return MinorUnits::toMinor(
+            $baseAmount * (float) ($order->getBaseToOrderRate() ?: 1),
+            (string) $order->getOrderCurrencyCode(),
+            MinorUnits::KLARNA
+        );
     }
 
     /**

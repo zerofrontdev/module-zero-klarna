@@ -44,7 +44,8 @@ class Callback implements HttpPostActionInterface, CsrfAwareActionInterface
     public function execute()
     {
         $result = $this->rawFactory->create()->setContents('');
-        $reference = (string) $this->request->getParam('order', '');
+        $reference = $this->request->getParam('order', '');
+        $reference = is_scalar($reference) ? (string) $reference : '';
         $order = $reference === '' ? null : $this->orderFactory->create()->loadByIncrementId($reference);
         if (!$order || !$order->getId() || $order->getPayment()?->getMethod() !== Payment::CODE
             || $order->getPayment()->getAdditionalInformation(Payment::HPP_SESSION_ID) !== $this->sessionId()
@@ -66,7 +67,9 @@ class Callback implements HttpPostActionInterface, CsrfAwareActionInterface
         $request = $this->request;
         $body = json_decode((string) $request->getContent(), true);
 
-        return is_array($body) ? (string) ($body['session_id'] ?? '') : '';
+        $sessionId = is_array($body) ? $body['session_id'] ?? '' : '';
+
+        return is_scalar($sessionId) ? (string) $sessionId : '';
     }
 
     /**

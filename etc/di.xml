@@ -12,4 +12,12 @@
             </argument>
         </arguments>
     </type>
+    <!-- Asked about pending orders by the recheck cron (Zero Checkout > Payment Webhooks > Recheck Pending Payments). -->
+    <type name="Zero\Checkout\Model\RedirectPayment\Updaters">
+        <arguments>
+            <argument name="updaters" xsi:type="array">
+                <item name="zero_klarna" xsi:type="object">Zero\Klarna\Model\OrderUpdater</item>
+            </argument>
+        </arguments>
+    </type>
 </config>

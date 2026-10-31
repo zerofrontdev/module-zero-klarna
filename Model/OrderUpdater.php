@@ -10,7 +10,10 @@ namespace Zero\Klarna\Model;
 
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Sales\Model\Order;
+use Zero\Checkout\Model\Money\MinorUnits;
+use Zero\Checkout\Model\RedirectPayment\LatePaymentInterface;
 use Zero\Checkout\Model\RedirectPayment\OrderPayment;
+use Zero\Checkout\Model\RedirectPayment\OrderUpdaterInterface;
 use Zero\Checkout\Model\RedirectPayment\ReturnResult;
 use Zero\Checkout\Model\RedirectPayment\WebhookHandlerInterface;
 
@@ -23,9 +26,15 @@ use Zero\Checkout\Model\RedirectPayment\WebhookHandlerInterface;
  * - CANCELLED, FAILED, ERROR, DISABLED: cancelled;
  * - WAITING, BACK: nobody finished on Klarna's page (NOT_STARTED);
  * - IN_PROGRESS, MANUAL_ID_CHECK: nothing yet.
+ * Callers run it under the order's lock (ReturnFlow, Webhooks::settle, the
+ * recheck cron: it is registered in Zero_Checkout's RedirectPayment\Updaters,
+ * since NOT_STARTED alone never cancels; only the return pages abandon()).
  */
-class OrderUpdater implements WebhookHandlerInterface
+class OrderUpdater implements WebhookHandlerInterface, OrderUpdaterInterface, LatePaymentInterface
 {
+    /** Order Management statuses of a Klarna order the customer paid for (authorized or captured). */
+    private const PAID = ['AUTHORIZED', 'PART_CAPTURED', 'CAPTURED'];
+
     public function __construct(
         private readonly Api $api,
         private readonly OrderPayment $orderPayment
@@ -33,10 +42,11 @@ class OrderUpdater implements WebhookHandlerInterface
     }
 
     /**
+     * @param array<string, string> $params not used: the state is asked from Klarna
      * @return string A ReturnResult state
      * @throws LocalizedException When Klarna doesn't answer
      */
-    public function update(Order $order): string
+    public function update(Order $order, array $params = []): string
     {
         $sessionId = (string) $order->getPayment()?->getAdditionalInformation(Payment::HPP_SESSION_ID);
         if ($order->getPayment()?->getMethod() !== Payment::CODE || $sessionId === '') {
@@ -67,6 +77,42 @@ class OrderUpdater implements WebhookHandlerInterface
     public function webhook(Order $order, array $data): void
     {
         $this->update($order);
+    }
+
+    /**
+     * A cancelled order: the Klarna order placed for it anyway (session
+     * COMPLETED, Order Management AUTHORIZED or captured). Only asks; nothing
+     * is released or captured and the order isn't touched.
+     *
+     * @inheritDoc
+     */
+    public function latePayment(Order $order): ?array
+    {
+        $sessionId = (string) $order->getPayment()?->getAdditionalInformation(Payment::HPP_SESSION_ID);
+        if ($order->getPayment()?->getMethod() !== Payment::CODE || $sessionId === '') {
+            return null;
+        }
+        $storeId = (int) $order->getStoreId();
+        $session = $this->api->get('/hpp/v1/sessions/' . rawurlencode($sessionId), $storeId);
+        $klarnaOrderId = (string) ($session['order_id'] ?? '');
+        if (($session['status'] ?? '') !== 'COMPLETED' || !preg_match('/^[0-9a-f-]{36}$/', $klarnaOrderId)) {
+            return null;
+        }
+        $klarnaOrder = $this->api->get('/ordermanagement/v1/orders/' . $klarnaOrderId, $storeId);
+        if (!in_array($klarnaOrder['status'] ?? '', self::PAID, true)) {
+            return null;
+        }
+        $currency = (string) ($klarnaOrder['purchase_currency'] ?? '');
+
+        return [
+            'id' => $klarnaOrderId,
+            'amount' => MinorUnits::format(
+                MinorUnits::fromMinor((int) ($klarnaOrder['order_amount'] ?? 0), $currency, MinorUnits::KLARNA),
+                $currency,
+                MinorUnits::KLARNA
+            ),
+            'currency' => $currency,
+        ];
     }
 
     /**
@@ -110,7 +156,7 @@ class OrderUpdater implements WebhookHandlerInterface
 
             return ReturnResult::PENDING;
         }
-        if (!in_array($klarnaOrder['status'] ?? '', ['AUTHORIZED', 'PART_CAPTURED', 'CAPTURED'], true)) {
+        if (!in_array($klarnaOrder['status'] ?? '', self::PAID, true)) {
             return ReturnResult::PENDING;
         }
         $order->getPayment()->setAdditionalInformation(Payment::KLARNA_ORDER_ID, $klarnaOrderId);

@@ -35,12 +35,19 @@ Part of [`zerofront/zero`](https://zerofront.dev), which installs the Zero theme
    order's amount and currency: the Magento order is **authorized**
    (processing, no invoice yet), the order email goes out. CANCELLED, FAILED,
    ERROR: cancelled, cart restored. Not finished: the session is disabled,
-   the order cancelled.
+   the order cancelled. The cancel URL asks Klarna first too: an order
+   already paid or authorized (another tab, the webhook) is never voided
+   there, the customer sees the success page.
 3. **status_update** (`zero_klarna/payment/callback`): for a customer who
    paid and never came back; the session is read from Klarna again. Not sent
    from a development site.
    Handled now or from the queue: Zero Checkout > Payment Webhooks
-   (the Zero_Checkout README).
+   (the Zero_Checkout README), under the order's lock. A Klarna order placed
+   for a Magento order already cancelled is not booked: the order stays
+   cancelled, with one comment and one admin notice
+   (`OrderUpdater::latePayment()` only asks). The updater is registered in
+   `RedirectPayment\Updaters` (NOT_STARTED alone never cancels), so the
+   recheck cron (off by default) asks Klarna about pending orders.
 
 **Capture:** invoice the order with **Capture Online** (in part too):
 Klarna takes the money then (`captures`). **Cancel** before capturing
@@ -59,6 +66,8 @@ countries and currencies of the merchant account.
 ## Tests
 
 `Test/Unit/Model/OrderLinesTest.php`: the lines add up to the order amount.
+
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
